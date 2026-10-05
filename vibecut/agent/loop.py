@@ -1,0 +1,132 @@
+"""편집 에이전트 루프 (Anthropic SDK tool calling, 프레임워크 없이 직접 구현).
+
+send(사용자 입력)를 부르면 에이전트가 도구를 쓰며 진행하다가
+* 최종 응답을 하거나 (questions=None)
+* ask_user로 질문하면 (questions=[...]) 멈추고 돌아온다.
+질문에 대한 답도 send()로 넘기면 이어서 진행한다.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import anthropic
+
+from vibecut.agent.log import AgentLogger
+from vibecut.agent.prompts import build_system_prompt
+from vibecut.agent.tools import TOOLS, ToolBox
+from vibecut.config import load_config
+
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
+@dataclass
+class AgentReply:
+    text: str
+    questions: list[dict[str, Any]] | None = None
+
+
+class EditAgent:
+    def __init__(self, video_id: str, logger: AgentLogger | None = None) -> None:
+        self.cfg = load_config()["agent"]
+        self.video_id = video_id
+        self.tools = ToolBox(video_id)
+        self.log = logger or AgentLogger(video_id)
+        self.client = anthropic.Anthropic()
+        self.system = build_system_prompt(self.cfg["max_questions"])
+        self.messages: list[dict[str, Any]] = []
+        # ask_user로 멈췄을 때: (같은 턴의 다른 도구 결과들, ask_user의 tool_use id)
+        self._pending: tuple[list[dict[str, Any]], str] | None = None
+
+    @property
+    def waiting_for_answer(self) -> bool:
+        return self._pending is not None
+
+    def send(self, user_text: str) -> AgentReply:
+        self.log.log("user", user_text)
+        if self._pending:
+            results, ask_id = self._pending
+            self._pending = None
+            results.append({"type": "tool_result", "tool_use_id": ask_id,
+                            "content": f"사용자 답변: {user_text}"})
+            self.messages.append({"role": "user", "content": results})
+        else:
+            self.messages.append({"role": "user", "content": user_text})
+        return self._run()
+
+    def _create(self) -> Any:
+        return self.client.beta.messages.create(
+            model=self.cfg["model"],
+            max_tokens=self.cfg["max_tokens"],
+            system=self.system,
+            tools=TOOLS,
+            messages=self.messages,
+            thinking={"type": "adaptive", "display": "summarized"},
+            output_config={"effort": self.cfg["effort"]},
+            cache_control={"type": "ephemeral"},
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
+        )
+
+    def _run(self) -> AgentReply:
+        for _ in range(self.cfg["max_turns"]):
+            try:
+                resp = self._create()
+            except anthropic.APIError as e:
+                self.log.log("error", f"Claude API 오류: {e}")
+                return AgentReply(f"Claude API 호출에 실패했습니다: {e}")
+
+            # 응답 블록은 그대로 대화에 붙인다 (thinking 블록 보존)
+            self.messages.append({"role": "assistant", "content": resp.content})
+            text_parts = []
+            for block in resp.content:
+                if block.type == "thinking" and block.thinking:
+                    self.log.log("thinking", block.thinking)
+                elif block.type == "text" and block.text.strip():
+                    text_parts.append(block.text)
+                    self.log.log("assistant", block.text)
+            text = "\n".join(text_parts)
+
+            if resp.stop_reason == "refusal":
+                self.log.log("error", "요청이 거부되었습니다.")
+                return AgentReply(text or "요청이 거부되어 진행할 수 없습니다.")
+
+            tool_uses = [b for b in resp.content if b.type == "tool_use"]
+            if not tool_uses:
+                return AgentReply(text)
+
+            results: list[dict[str, Any]] = []
+            ask = None
+            for tu in tool_uses:
+                self.log.log("tool_call", tu.input, tool=tu.name)
+                if tu.name == "ask_user":
+                    ask = tu
+                    continue
+                content, is_error = self.tools.execute(tu.name, dict(tu.input))
+                self.log.log("error" if is_error else "tool_result", content, tool=tu.name)
+                results.append({"type": "tool_result", "tool_use_id": tu.id,
+                                "content": content, "is_error": is_error})
+
+            if ask is not None:
+                questions = list(ask.input.get("questions", []))
+                if not questions or len(questions) > self.cfg["max_questions"]:
+                    results.append({"type": "tool_result", "tool_use_id": ask.id, "is_error": True,
+                                    "content": f"질문은 1~{self.cfg['max_questions']}개여야 합니다."})
+                else:
+                    self.log.log("question", questions, tool="ask_user")
+                    self._pending = (results, ask.id)
+                    return AgentReply(text, questions=questions)
+
+            self.messages.append({"role": "user", "content": results})
+
+        self.log.log("error", f"최대 반복 횟수({self.cfg['max_turns']})에 도달해 멈췄습니다.")
+        return AgentReply("작업 단계가 너무 길어져 멈췄습니다. 요청을 조금 더 구체적으로 말씀해 주세요.")
+
+
+def format_questions(questions: list[dict[str, Any]]) -> str:
+    def t(s: float) -> str:
+        return f"{int(s // 60)}:{s % 60:05.2f}"
+    return "\n".join(f"{i}. [{t(q['start'])} ~ {t(q['end'])}] {q['summary']}\n   고민되는 이유: {q['why_unsure']}"
+                     for i, q in enumerate(questions, start=1))
+

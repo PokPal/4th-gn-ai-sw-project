@@ -46,6 +46,49 @@ def cmd_score(args: argparse.Namespace) -> None:
         print(f"    [{ev['start']:8.3f} ~ {ev['end']:8.3f}] {ev['id']}  {ev['score']:.2f}  {ev['reason']}")
 
 
+def cmd_analyze(args: argparse.Namespace) -> None:
+    """영상 입력부터 점수화까지 한 번에 (각 단계는 캐시를 사용)."""
+    from vibecut.detectors import DETECTORS
+    from vibecut.media.ingest import ingest
+    from vibecut.scoring.score import score
+    from vibecut.stt.run import transcribe
+
+    video_id = ingest(Path(args.video))["video_id"]
+    transcribe(video_id)
+    for detect in DETECTORS.values():
+        detect(video_id)
+    score(video_id)
+    print(f"\n분석 완료. 편집 시작: python cli.py edit {video_id}")
+
+
+def cmd_edit(args: argparse.Namespace) -> None:
+    from vibecut.agent.loop import EditAgent, format_questions
+
+    agent = EditAgent(args.video_id)
+    print(f"판단 로그: {agent.log.path}")
+    message = args.goal or input("\n편집 방향을 말해 주세요 > ").strip()
+    while message:
+        reply = agent.send(message)
+        if reply.text:
+            print(f"\n[바이브컷] {reply.text}")
+        if reply.questions:
+            print("\n[질문]\n" + format_questions(reply.questions))
+        try:
+            message = input("\n> ").strip()
+        except EOFError:
+            break
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    from vibecut.export.resolve import export_edit
+    from vibecut.storage.edits import edit_path, latest_edit
+
+    path = edit_path(args.video_id, args.edit_id) if args.edit_id else latest_edit(args.video_id)
+    if path is None or not path.exists():
+        raise SystemExit("편집 결정 목록이 없습니다. 먼저 edit를 실행하세요.")
+    export_edit(args.video_id, path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py", description="바이브컷 단계별 실행")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -72,6 +115,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("video_id")
     p.add_argument("--show", type=int, default=10, help="점수 높은 순으로 출력할 후보 수")
     p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("analyze", help="ingest → transcribe → detect all → score 를 한 번에")
+    p.add_argument("video", help="원본 영상 경로")
+    p.set_defaults(func=cmd_analyze)
+
+    p = sub.add_parser("edit", help="편집 에이전트와 대화 (빈 줄 입력 시 종료)")
+    p.add_argument("video_id")
+    p.add_argument("--goal", help="첫 요청 (생략하면 입력받음)")
+    p.set_defaults(func=cmd_edit)
+
+    p = sub.add_parser("export", help="편집 결정 목록 → timeline.otio, subtitles.srt, markers.edl")
+    p.add_argument("video_id")
+    p.add_argument("--edit-id", help="edits/<edit_id>.json (생략하면 최신)")
+    p.set_defaults(func=cmd_export)
 
     return parser
 

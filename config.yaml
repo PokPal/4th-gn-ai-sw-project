@@ -61,12 +61,15 @@ scoring:
   min_score: 0.2               # 이 점수 미만은 후보에서 제외
 
 agent:
-  model: claude-sonnet-5-5
-  max_tokens: 4096
-  max_turns: 30                # 에이전트 루프 최대 반복 횟수
+  model: claude-opus-5-5       # 비용을 줄이려면 claude-sonnet-5-5
+  effort: high                 # low | medium | high (판단 깊이와 토큰 사용량)
+  max_tokens: 16000
+  max_turns: 30                # 에이전트 루프 최대 반복 횟수 (비용 상한 역할)
+  candidate_limit: 30          # list_candidates 한 번에 돌려줄 최대 개수
   max_questions: 3             # 한 번에 묻는 최대 질문 수
   duration_tolerance: 0.05     # 목표 길이 허용 오차 비율 (±5%)
 
 export:
   default_fps: 30.0            # meta.json에 fps가 없을 때만 사용
   default_marker_color: Blue
+  timeline_start: 3600.0       # 타임라인 시작 타임코드(초) — 다빈치 리졸브 기본값 01:00:00:00

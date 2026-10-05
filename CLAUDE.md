@@ -116,7 +116,8 @@ data/cache/<video_id>/
 ├── transcript.json        # ① 자막
 ├── events/<detector>.json # ② 탐지기별 탐지 구간
 ├── candidates.json        # ② 형식, 점수화 결과 (type: "highlight", source: "scoring")
-└── edits/<timestamp>.json # ③ 편집 결정 목록
+├── edits/<timestamp>.json # ③ 편집 결정 목록
+└── exports/<timestamp>/   # 내보내기 결과: timeline.otio, subtitles.srt, markers.edl
 ```
 
 > 아래 JSON의 값(문장, 수치, 이유 문구 등)은 **형식 설명용 예시**다. 코드에 이 값을 넣지 말 것.
