@@ -4,6 +4,7 @@ python-dotenv
 pyyaml
 numpy
 librosa
+scipy
 soundfile
 scenedetect
 opencv-python

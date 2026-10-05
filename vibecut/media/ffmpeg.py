@@ -26,6 +26,17 @@ def probe(video_path: Path) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def run_filter_log(args: list[str]) -> str:
+    """출력 파일 없이 필터만 실행하고 ffmpeg 로그(stderr)를 돌려준다. silencedetect 등에 사용."""
+    result = subprocess.run(
+        [_require("ffmpeg"), "-hide_banner", "-nostats", *args, "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg 실패: {result.stderr.strip()[-500:]}")
+    return result.stderr
+
+
 def run_with_progress(args: list[str], duration: float, label: str) -> None:
     """ffmpeg를 실행하며 원본 길이 대비 진행률을 한 줄로 갱신해 출력한다."""
     cmd = [_require("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",

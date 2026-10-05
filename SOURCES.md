@@ -13,6 +13,7 @@
 |PyYAML|config.yaml 읽기|MIT|
 |NumPy|수치 계산|BSD-3-Clause|
 |librosa|음량(RMS) 분석|ISC|
+|SciPy|주변 평균 음량(중앙값 필터) 계산|BSD-3-Clause|
 |soundfile|오디오 파일 읽기|BSD-3-Clause|
 |PySceneDetect|장면 전환 탐지|BSD-3-Clause|
 |OpenCV (opencv-python)|밝기·프레임 변화량 분석|Apache-2.0|

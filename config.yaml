@@ -31,16 +31,22 @@ detectors:
     min_duration: 0.5
     merge_gap: 1.0             # 이 간격보다 가까운 급증은 하나로 합침
   reaction:
-    keywords: [와, 헐, 대박, 미쳤다, 미친, 뭐야, 아니, 오, 으악, 잡았다, 됐다, 살았다, 개쩐다, 레전드]
+    # 단어가 키워드와 같거나, 키워드 뒤에 늘어진 소리(아아, ~, !, ㅋㅋ 등)만 붙은 경우 반응으로 본다
+    keywords: [와, 우와, 헐, 대박, 미쳤다, 미쳤어, 미친, 뭐야, 오, 으악, 아악, 잡았다, 됐다, 살았다, 개쩐다, 레전드, 나이스, 제발]
     context_seconds: 2.0       # 반응 단어 앞뒤로 포함할 시간
+    base_score: 0.6            # 반응 단어 1개일 때 점수
+    extra_score: 0.2           # 같은 구간에 반응 단어가 하나 늘 때마다 더할 점수
   visual:
     scene_threshold: 27.0      # PySceneDetect ContentDetector 민감도 (낮을수록 민감)
     sample_fps: 2.0            # 밝기·프레임 변화량 계산 시 초당 샘플 수
     brightness_jump: 40.0      # 밝기(0~255) 급변 기준
     motion_threshold: 0.25     # 프레임 변화량(0~1) 급변 기준
+    merge_gap: 1.0             # 이 간격보다 가까운 화면 급변은 하나로 합침
+    point_window: 0.5          # 장면 전환·밝기 급변 같은 순간 이벤트를 앞뒤로 넓힐 시간
   dead_time:
     min_duration: 15.0         # 이 길이 이상 조용하고 화면 변화가 적으면 지루한 구간
     max_motion: 0.03           # 이 값보다 화면 변화가 작으면 정적인 화면
+    quiet_margin_db: 0.0       # 전체 음량 중앙값 + 이 값 이하이면 조용한 것으로 봄
 
 scoring:
   weights:                     # 하이라이트 점수 가중치
