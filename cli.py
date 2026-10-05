@@ -7,11 +7,23 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+
+
+def cmd_ingest(args: argparse.Namespace) -> None:
+    from vibecut.media.ingest import ingest
+
+    ingest(Path(args.video))
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py", description="바이브컷 단계별 실행")
-    parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("ingest", help="영상 등록: video_id, meta.json, 음성 추출, 분석용 사본")
+    p.add_argument("video", help="원본 영상 경로")
+    p.set_defaults(func=cmd_ingest)
+
     return parser
 
 

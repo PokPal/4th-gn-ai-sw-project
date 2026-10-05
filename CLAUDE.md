@@ -112,6 +112,7 @@ vibecut/
 data/cache/<video_id>/
 ├── meta.json              # 영상 정보 (길이, fps, 해상도, 원본 경로)
 ├── audio.wav              # 추출한 음성
+├── proxy.mp4              # 화면 분석용 저해상도 사본 (음성 없음)
 ├── transcript.json        # ① 자막
 ├── events/<detector>.json # ② 탐지기별 탐지 구간
 ├── candidates.json        # ② 형식, 점수화 결과 (type: "highlight", source: "scoring")

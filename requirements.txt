@@ -5,7 +5,7 @@ pyyaml
 numpy
 librosa
 soundfile
-scenedetect[opencv]
+scenedetect
 opencv-python
 opentimelineio
 gradio
