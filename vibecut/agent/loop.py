@@ -19,6 +19,8 @@ from vibecut.agent.tools import TOOLS, ToolBox
 from vibecut.config import load_config
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# 도구 호출 사이의 진행 설명을 텍스트로 받는다 (내부 추론은 숨겨진 채로 유지됨)
+UPDATES_BETA = "thinking-display-updates-2026-08-18"
 
 
 @dataclass
@@ -62,10 +64,10 @@ class EditAgent:
             system=self.system,
             tools=TOOLS,
             messages=self.messages,
-            thinking={"type": "adaptive", "display": "summarized"},
+            thinking={"type": "adaptive", "display": "updates"},
             output_config={"effort": self.cfg["effort"]},
             cache_control={"type": "ephemeral"},
-            betas=[FALLBACK_BETA],
+            betas=[FALLBACK_BETA, UPDATES_BETA],
             fallbacks="default",
         )
 
@@ -80,16 +82,20 @@ class EditAgent:
             # 응답 블록은 그대로 대화에 붙인다 (thinking 블록 보존)
             self.messages.append({"role": "assistant", "content": resp.content})
             text_parts = []
+            # 도구 호출과 함께 온 텍스트는 진행 설명이므로 판단 로그로 분류한다
+            has_tools = any(b.type == "tool_use" for b in resp.content)
             for block in resp.content:
                 if block.type == "thinking" and block.thinking:
                     self.log.log("thinking", block.thinking)
                 elif block.type == "text" and block.text.strip():
                     text_parts.append(block.text)
-                    self.log.log("assistant", block.text)
+                    self.log.log("thinking" if has_tools else "assistant", block.text)
             text = "\n".join(text_parts)
 
             if resp.stop_reason == "refusal":
-                self.log.log("error", "요청이 거부되었습니다.")
+                d = resp.stop_details
+                self.log.log("error", f"요청이 거부되었습니다. (분류: {getattr(d, 'category', None)}, "
+                                      f"설명: {getattr(d, 'explanation', None)})")
                 return AgentReply(text or "요청이 거부되어 진행할 수 없습니다.")
 
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
