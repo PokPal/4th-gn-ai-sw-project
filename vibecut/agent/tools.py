@@ -86,8 +86,10 @@ TOOLS: list[dict[str, Any]] = [
         "name": "build_edit",
         "description": "선택한 구간들로 편집 결정 목록을 만들어 저장하고, 총 길이와 목표 대비 차이를 돌려준다. "
                        "clips는 영상에 놓일 순서대로 준다(보통 시간순). 각 클립 경계는 말소리에 맞춰 자동 보정된다 "
-                       "(말 시작 1초 전부터, 말 끝 직후까지, 조용한 공백은 제거 — speech_adjustments에 기록). "
-                       "보정 후 총 길이가 허용 오차를 벗어나면 구간을 빼거나 더해 다시 호출한다.",
+                       "(말 시작 1초 전부터, 말 끝 직후까지, 조용한 공백은 제거). 이어지는 두 클립 사이 간격이 2초 이하면 "
+                       "점프컷을 피하려고 하나로 합친다. 보정 내용은 speech_adjustments에 기록된다. "
+                       "2초보다 긴 간격에 효과음·화면 변화 같은 신호가 있으면 이어 붙일지 목표 길이 여유를 보고 판단한다. "
+                       "보정 후 총 길이가 허용 오차를 벗어나면 덜 중요한 구간을 빼거나 더해 다시 호출한다.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -222,28 +224,38 @@ class ToolBox:
         pre, post = self.cfg["edit"]["speech_pre_roll"], self.cfg["edit"]["speech_post_roll"]
         duration = self.meta["duration"]
         spans = self._speech_spans()
-        inside = [(on, off) for on, off in spans if off > start and on < end]
+
+        def covered(on: float, off: float) -> bool:
+            # 클립이 문장의 절반 이상 또는 1초 이상을 담고 있을 때만 그 문장을 클립에 속한 것으로 본다.
+            # 경계에 살짝 걸친 문장은 일부러 뺀 것일 수 있으므로 늘리지 않는다.
+            overlap = min(off, end) - max(on, start)
+            return overlap > 0 and (overlap >= 0.5 * (off - on) or overlap >= 1.0)
+
+        inside = [(on, off) for on, off in spans if covered(on, off)]
         if not inside:
             return start, end, []
         first_on = min(on for on, _ in inside)
         last_off = max(off for _, off in inside)
         notes = []
 
+        # 클립에 속하지 않은 이웃 문장: 여유 시간이 그 문장을 침범하지 않게 한다
+        outside = [(on, off) for on, off in spans if (on, off) not in inside]
+        prev_off = min(first_on, max((off for on, off in outside if on < first_on), default=0.0))
+        next_on = max(last_off, min((on for on, _ in outside if on > first_on), default=duration))
+
         new_start = start
-        if first_on - pre < start:  # 말이 잘렸거나 앞 여유가 부족 → 앞으로 늘림 (이전 문장 끝은 넘지 않음)
-            prev_off = max((off for _, off in spans if off <= first_on), default=0.0)
+        if first_on - pre < start:  # 말이 잘렸거나 앞 여유가 부족 → 앞으로 늘림
             new_start = max(0.0, prev_off, first_on - pre)
         elif self._quiet(start, first_on - pre):  # 말 앞 공백이 길고 조용함 → 줄임
-            new_start = first_on - pre
+            new_start = max(prev_off, first_on - pre)
         if abs(new_start - start) >= 0.05:
             notes.append(f"시작 {start:.2f}→{new_start:.2f}초 (말 시작 {first_on:.2f}초)")
 
         new_end = end
-        if last_off + post > end:  # 말이 잘렸거나 뒤 여유가 부족 → 뒤로 늘림 (다음 문장 시작은 넘지 않음)
-            next_on = min((on for on, _ in spans if on >= last_off), default=duration)
+        if last_off + post > end:  # 말이 잘렸거나 뒤 여유가 부족 → 뒤로 늘림
             new_end = min(duration, next_on, last_off + post)
         elif self._quiet(last_off + post, end):  # 말 뒤 공백이 길고 조용함 → 줄임
-            new_end = last_off + post
+            new_end = min(next_on, last_off + post)
         if abs(new_end - end) >= 0.05:
             notes.append(f"끝 {end:.2f}→{new_end:.2f}초 (말 끝 {last_off:.2f}초)")
         return new_start, new_end, notes
@@ -342,6 +354,29 @@ class ToolBox:
         return {"detector": detector, "params_used": doc["params"], "events": len(doc["events"]),
                 "highlight_candidates": len(cands)}
 
+    def _merge_close_clips(self, clips: list[dict[str, Any]], adjustments: list[str]) -> list[dict[str, Any]]:
+        """재생 순서상 이웃이고 원본에서도 이어지는 두 클립 사이 간격이 merge_gap초 이하면 하나로 합친다.
+
+        짧은 공백을 잘라 아끼는 시간보다 점프컷이 생기는 손해가 크기 때문. 마커·이유는 이어 붙여 보존한다.
+        """
+        gap_limit = self.cfg["edit"]["merge_gap"]
+        merged: list[dict[str, Any]] = []
+        for c in clips:
+            p = merged[-1] if merged else None
+            if p is not None and c["start"] >= p["start"] and c["start"] - p["end"] <= gap_limit:
+                gap = c["start"] - p["end"]
+                adjustments.append(f"클립 {p['order']}·{c['order']}: 간격 {max(gap, 0):.2f}초 ≤ {gap_limit}초라 하나로 합침")
+                p["end"] = max(p["end"], c["end"])
+                p["candidate_id"] = p["candidate_id"] or c["candidate_id"]
+                p["reason"] = f"{p['reason']} / {c['reason']}"
+                p["marker"]["name"] = f"{p['marker']['name']} / {c['marker']['name']}"
+                p["marker"]["note"] = " / ".join(x for x in [p["marker"]["note"], c["marker"]["note"]] if x)
+            else:
+                merged.append(c)
+        for i, c in enumerate(merged, start=1):
+            c["order"] = i
+        return merged
+
     def build_edit(self, goal: str, target_duration: float, clips: list[dict[str, Any]]) -> dict[str, Any]:
         if not clips:
             raise ToolError("clips가 비어 있습니다.")
@@ -362,14 +397,8 @@ class ToolBox:
                 "marker": {"name": c["marker_name"], "note": c.get("marker_note", ""),
                            "color": c.get("marker_color") or self.cfg["export"]["default_marker_color"]},
             })
+        out_clips = self._merge_close_clips(out_clips, adjustments)
         ordered = sorted(out_clips, key=lambda c: c["start"])
-        # 보정 때문에 새로 겹친 이웃 클립은 사이 공백을 반으로 나눠 경계를 맞춘다
-        originals = {i: (c["start"], c["end"]) for i, c in enumerate(clips, start=1)}
-        for a, b in zip(ordered, ordered[1:]):
-            if b["start"] < a["end"] and originals[b["order"]][0] >= originals[a["order"]][1]:
-                mid = _r((a["end"] + b["start"]) / 2)
-                a["end"], b["start"] = mid, mid
-                adjustments.append(f"클립 {a['order']}·{b['order']}: 여유 시간이 겹쳐 {mid:.2f}초에서 나눔")
         for a, b in zip(ordered, ordered[1:]):
             if b["start"] < a["end"]:
                 warnings.append(f"구간이 겹침: {a['start']}~{a['end']} 과 {b['start']}~{b['end']} (겹친 부분이 두 번 나옴)")

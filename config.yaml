@@ -74,6 +74,7 @@ edit:
   snap_to_speech: true
   speech_pre_roll: 1.0         # 말 시작 전에 남길 시간(초)
   speech_post_roll: 0.5        # 말 끝난 뒤에 남길 시간(초)
+  merge_gap: 2.0               # 이어지는 두 클립 사이 간격이 이 값(초) 이하면 자르지 않고 하나로 합침
 
 export:
   default_fps: 30.0            # meta.json에 fps가 없을 때만 사용

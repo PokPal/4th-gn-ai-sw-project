@@ -13,7 +13,10 @@ EDITS_DIR = "edits"
 
 def save_edit(edit: dict[str, Any]) -> Path:
     stamp = datetime.fromisoformat(edit["created_at"]).strftime("%Y%m%d_%H%M%S")
-    path = cache_dir(edit["video_id"]) / EDITS_DIR / f"{stamp}.json"
+    folder = cache_dir(edit["video_id"]) / EDITS_DIR
+    path, n = folder / f"{stamp}.json", 2
+    while path.exists():  # 같은 초에 여러 번 저장되면 번호를 붙인다
+        path, n = folder / f"{stamp}_{n}.json", n + 1
     write_json(path, edit)
     return path
 
