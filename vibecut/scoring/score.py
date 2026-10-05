@@ -21,6 +21,7 @@ TYPE_LABELS = {
     "scene_change": "장면 전환",
     "brightness_change": "밝기 급변",
     "motion": "큰 움직임",
+    "desaturation": "흑백 전환(사망 추정)",
 }
 
 
@@ -58,15 +59,20 @@ def score(video_id: str) -> dict[str, Any]:
         signals += [ev for ev in read_json(path)["events"] if ev["type"] in weights]
     print(f"[{NAME}] 신호 {len(signals)}개를 묶어 후보 생성")
 
-    padded = [(max(0.0, ev["start"] - cfg["padding_before"]),
-               min(duration, ev["end"] + cfg["padding_after"])) for ev in signals]
+    def window(ev: dict[str, Any]) -> tuple[float, float]:
+        anchor = cfg.get("anchor_windows", {}).get(ev["type"])
+        if anchor:  # 이벤트 시작 시점 기준 (예: 흑백 전환 → 죽기 직전 교전)
+            return max(0.0, ev["start"] - anchor["before"]), min(duration, ev["start"] + anchor["after"])
+        return max(0.0, ev["start"] - cfg["padding_before"]), min(duration, ev["end"] + cfg["padding_after"])
+
+    padded = [window(ev) for ev in signals]
     groups = []
     for g in merge_intervals(padded, gap=cfg["merge_gap"]):
         groups += _split_long(g[0], g[1], padded, cfg["max_duration"])
 
     events = []
     for start, end in groups:
-        inside = [ev for ev in signals if ev["start"] < end and ev["end"] > start]
+        inside = [ev for ev, (ws, we) in zip(signals, padded) if ws < end and we > start]
         best: dict[str, float] = {}
         for ev in inside:
             best[ev["type"]] = max(best.get(ev["type"], 0.0), ev["score"])

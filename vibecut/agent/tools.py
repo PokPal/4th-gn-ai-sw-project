@@ -32,13 +32,15 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_candidates",
         "description": "하이라이트 후보 또는 탐지 구간을 조회한다. 기본은 type=highlight(점수화된 후보)를 점수 높은 순으로 돌려준다. "
-                       "각 항목에 그 구간의 대사 일부(speech)가 붙는다. types로 dead_time, reaction, loudness_spike 등도 볼 수 있다.",
+                       "각 항목에 그 구간의 대사 일부(speech)가 붙는다. types로 dead_time, reaction, loudness_spike 등도 볼 수 있다. "
+                       "desaturation은 게임 화면이 갑자기 흑백으로 바뀐 순간이다 — 리그 오브 레전드 등에서는 캐릭터 사망으로 추정되며, "
+                       "start가 죽은 시점이다. 사망 장면을 쓸 때는 죽기 직전 교전(약 10~20초 전)부터 포함한다.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "types": {"type": "array", "items": {"type": "string", "enum": [
                     "highlight", "silence", "loudness_spike", "reaction", "scene_change",
-                    "brightness_change", "motion", "dead_time"]},
+                    "brightness_change", "motion", "desaturation", "dead_time"]},
                     "description": "조회할 종류. 생략하면 [\"highlight\"]"},
                 "min_score": {"type": "number", "description": "이 점수(0~1) 이상만"},
                 "start": {"type": "number", "description": "이 시간(초) 이후와 겹치는 구간만"},

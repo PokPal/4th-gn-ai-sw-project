@@ -45,6 +45,15 @@ detectors:
     motion_threshold: 0.25     # 프레임 변화량(0~1) 급변 기준
     merge_gap: 1.0             # 이 간격보다 가까운 화면 급변은 하나로 합침
     point_window: 0.5          # 장면 전환·밝기 급변 같은 순간 이벤트를 앞뒤로 넓힐 시간
+    # 채도 급감(흑백 전환) — 예: 리그 오브 레전드 사망 화면
+    game_region: [0.0, 0.0, 0.72, 0.85]   # 색을 잴 게임 화면 영역 (x0, y0, x1, y1 화면 비율). 방송 오버레이(캐릭터·채팅)를 빼도록 영상 구성에 맞게 조정
+    color_saturation: 80       # 채도(0~255)가 이 값 이상인 픽셀을 "색 있는 픽셀"로 봄
+    desaturation_ratio: 0.25   # 영역 안 색 있는 픽셀 비율이 이보다 낮으면 흑백 화면 (생존 화면 0.35 이상, 사망 화면 0.15 이하에서 정함)
+    desaturation_min_duration: 4.0   # 흑백이 이 시간(초) 이상 이어져야 이벤트
+    desaturation_min_brightness: 25  # 이보다 어두운 화면(검은 전환 화면)은 제외
+    desaturation_max_brightness: 120 # 이보다 밝은 화면(파스텔 톤 대기 화면 등)은 제외. 사망 화면 밝기는 35~55
+    desaturation_lookback: 10.0      # 흑백 전환 직전 이 시간(초) 동안의 색 비율을 봄
+    desaturation_before_min: 0.35    # 직전 색 비율이 이 값 이상이어야 "갑자기 흑백으로 바뀐 것"으로 인정 (대기 화면·어두운 맵 제외)
   dead_time:
     min_duration: 15.0         # 이 길이 이상 조용하고 화면 변화가 적으면 지루한 구간
     max_motion: 0.03           # 이 값보다 화면 변화가 작으면 정적인 화면
@@ -60,10 +69,13 @@ scoring:
     scene_change: 0.10
     brightness_change: 0.10
     motion: 0.15
+    desaturation: 0.40           # 화면 흑백 전환(사망 추정)
   merge_gap: 3.0               # 신호를 하나의 후보로 묶는 최대 간격(초)
   padding_before: 3.0          # 후보 앞에 붙일 여유 시간
   padding_after: 2.0           # 후보 뒤에 붙일 여유 시간
   min_score: 0.2               # 이 점수 미만은 후보에서 제외
+  anchor_windows:              # 이벤트 시작 시점을 기준으로 후보 구간을 잡는 종류 (흑백 화면 자체는 부활 대기라 지루함)
+    desaturation: {before: 15.0, after: 3.0}   # 죽기 15초 전 교전부터 죽은 직후 3초까지
   max_duration: 45.0           # 후보 최대 길이(초). 신호가 이어 붙어 더 길어지면 가장 큰 틈에서 나눔
 
 agent:

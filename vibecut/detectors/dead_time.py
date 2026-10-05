@@ -10,7 +10,7 @@ from scipy.ndimage import median_filter
 from vibecut.config import load_config
 from vibecut.detectors.common import make_event, mask_to_intervals, save_events
 from vibecut.detectors.loudness import loudness_series
-from vibecut.detectors.visual import visual_series
+from vibecut.detectors.visual import series_for
 from vibecut.storage.cache import cache_dir, read_json
 from vibecut.stt.run import TRANSCRIPT_FILE
 
@@ -24,7 +24,7 @@ def detect(video_id: str, params: dict[str, Any] | None = None) -> dict[str, Any
     step = 1.0 / sample_fps
     print(f"[{NAME}] 말 없음 + 조용함 + 화면 변화 {p['max_motion']} 미만이 {p['min_duration']}초 이상")
 
-    times, _, motion = visual_series(video_id, sample_fps)
+    times, _, motion, _ = series_for(video_id)
     if len(times) == 0:
         return save_events(video_id, NAME, p, [])
 
