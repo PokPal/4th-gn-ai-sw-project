@@ -1,0 +1,11 @@
+anthropic
+openai
+python-dotenv
+pyyaml
+numpy
+librosa
+soundfile
+scenedetect[opencv]
+opencv-python
+opentimelineio
+gradio

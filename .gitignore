@@ -1,0 +1,9 @@
+.env
+data/
+memory/
+logs/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.gradio/
