@@ -16,6 +16,7 @@ KIND_LABELS = {
     "tool_result": "도구 결과",
     "question": "사용자에게 질문",
     "error": "오류",
+    "usage": "비용",
 }
 
 

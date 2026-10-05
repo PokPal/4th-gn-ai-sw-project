@@ -40,6 +40,7 @@ class EditAgent:
         self.messages: list[dict[str, Any]] = []
         # ask_user로 멈췄을 때: (같은 턴의 다른 도구 결과들, ask_user의 tool_use id)
         self._pending: tuple[list[dict[str, Any]], str] | None = None
+        self.total_cost = 0.0  # 이 대화의 누적 예상 비용(USD)
 
     @property
     def waiting_for_answer(self) -> bool:
@@ -71,6 +72,22 @@ class EditAgent:
             fallbacks="default",
         )
 
+    def _record_usage(self, usage: Any) -> None:
+        """호출마다 토큰 사용량과 예상 비용(config 단가 기준)을 판단 로그에 남긴다."""
+        price = self.cfg["price_per_mtok"]
+        tokens = {
+            "input": usage.input_tokens or 0,
+            "output": usage.output_tokens or 0,
+            "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        }
+        cost = sum(tokens[k] * price[k] for k in tokens) / 1_000_000
+        self.total_cost += cost
+        self.log.log("usage", f"입력 {tokens['input']:,} / 캐시쓰기 {tokens['cache_write']:,} / "
+                              f"캐시읽기 {tokens['cache_read']:,} / 출력 {tokens['output']:,} 토큰 → "
+                              f"${cost:.4f} (누적 ${self.total_cost:.4f})",
+                     tokens=tokens, cost=round(cost, 6), total_cost=round(self.total_cost, 6))
+
     def _run(self) -> AgentReply:
         for _ in range(self.cfg["max_turns"]):
             try:
@@ -79,6 +96,7 @@ class EditAgent:
                 self.log.log("error", f"Claude API 오류: {e}")
                 return AgentReply(f"Claude API 호출에 실패했습니다: {e}")
 
+            self._record_usage(resp.usage)
             # 응답 블록은 그대로 대화에 붙인다 (thinking 블록 보존)
             self.messages.append({"role": "assistant", "content": resp.content})
             text_parts = []

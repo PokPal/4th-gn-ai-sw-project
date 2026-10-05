@@ -51,7 +51,9 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "get_transcript",
-        "description": "start~end초 구간의 자막(문장 단위, 원본 시간)을 돌려준다. 장면의 맥락을 확인할 때 쓴다.",
+        "description": "start~end초 구간의 자막(문장 단위, 원본 시간)을 돌려준다. 장면의 맥락을 확인할 때 쓴다. "
+                       "한 번에 돌려주는 글자 수에 상한이 있어 긴 범위는 잘린다(truncated, next_start). "
+                       "영상 전체를 읽지 말고 후보 구간 주변 위주로 조회한다.",
         "input_schema": {
             "type": "object",
             "properties": {"start": {"type": "number"}, "end": {"type": "number"}},
@@ -310,10 +312,21 @@ class ToolBox:
         }
 
     def get_transcript(self, start: float, end: float) -> dict[str, Any]:
+        """긴 범위를 한 번에 가져가면 이후 모든 호출 비용이 커지므로 글자 수 상한을 둔다."""
         self._check_range(start, end)
-        segs = [{"start": s["start"], "end": s["end"], "text": s["text"]}
-                for s in self._transcript() if s["start"] < end and s["end"] > start]
-        return {"start": start, "end": end, "segments": segs}
+        limit = self.cfg["agent"]["transcript_max_chars"]
+        segs, used = [], 0
+        for s in self._transcript():
+            if not (s["start"] < end and s["end"] > start):
+                continue
+            used += len(s["text"]) + 20
+            if used > limit and segs:
+                return {"start": start, "end": end, "segments": segs, "truncated": True,
+                        "next_start": s["start"],
+                        "note": f"글자 수 상한({limit}자)으로 잘렸습니다. 필요하면 next_start부터 다시 조회하되, "
+                                "전체를 다 읽기보다 후보 구간 위주로 조회하세요."}
+            segs.append({"start": s["start"], "end": s["end"], "text": s["text"]})
+        return {"start": start, "end": end, "segments": segs, "truncated": False}
 
     def get_signals(self, start: float, end: float) -> dict[str, Any]:
         self._check_range(start, end)

@@ -72,6 +72,12 @@ agent:
   max_tokens: 16000
   max_turns: 30                # 에이전트 루프 최대 반복 횟수 (비용 상한 역할)
   candidate_limit: 30          # list_candidates 한 번에 돌려줄 최대 개수
+  transcript_max_chars: 6000   # get_transcript 한 번에 돌려줄 최대 글자 수 (비용 상한)
+  price_per_mtok:              # 비용 기록용 단가 (USD / 100만 토큰) — 모델을 바꾸면 함께 바꿀 것
+    input: 4.0
+    output: 20.0
+    cache_write: 5.0
+    cache_read: 0.2
   max_questions: 3             # 한 번에 묻는 최대 질문 수
   duration_tolerance: 0.05     # 목표 길이 허용 오차 비율 (±5%)
 
