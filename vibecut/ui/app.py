@@ -192,7 +192,8 @@ def build_app() -> gr.Blocks:
                     upload = gr.File(label="또는 영상 업로드 (data/로 복사됨)", file_types=["video"], type="filepath")
                     analyze_btn = gr.Button("분석", variant="primary")
                 with gr.Tab("분석된 영상"):
-                    analyzed_dd = gr.Dropdown(choices=analyzed_videos(), label="이미 분석한 영상", interactive=True)
+                    analyzed_dd = gr.Dropdown(choices=analyzed_videos(), value=None, label="이미 분석한 영상",
+                                              interactive=True)
                 status = gr.Textbox(label="진행 상황", lines=8, interactive=False)
                 gr.Markdown("### 구간 미리보기")
                 preview_dd = gr.Dropdown(choices=[], label="질문 구간 또는 편집 클립", interactive=True)
@@ -200,8 +201,8 @@ def build_app() -> gr.Blocks:
             with gr.Column(scale=4):
                 gr.Markdown("### 2. 편집 에이전트")
                 chatbot = gr.Chatbot(label="대화", height=520)
-                msg = gr.Textbox(placeholder="예: 10분짜리로, 반응 큰 장면 위주로 만들어줘 / 질문에 대한 답", label="메시지",
-                                 lines=2)
+                msg = gr.Textbox(placeholder="예: 10분짜리로, 반응 큰 장면 위주로 만들어줘 / 질문에 대한 답 (Enter로 전송)",
+                                 label="메시지", lines=1)
                 with gr.Row():
                     send_btn = gr.Button("보내기", variant="primary")
                     reset_btn = gr.Button("새 대화")
