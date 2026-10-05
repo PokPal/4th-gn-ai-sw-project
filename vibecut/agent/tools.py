@@ -85,8 +85,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "build_edit",
         "description": "선택한 구간들로 편집 결정 목록을 만들어 저장하고, 총 길이와 목표 대비 차이를 돌려준다. "
-                       "clips는 영상에 놓일 순서대로 준다(보통 시간순). 총 길이가 허용 오차를 벗어나면 구간을 빼거나 더하거나 "
-                       "경계를 조정해 다시 호출한다.",
+                       "clips는 영상에 놓일 순서대로 준다(보통 시간순). 각 클립 경계는 말소리에 맞춰 자동 보정된다 "
+                       "(말 시작 1초 전부터, 말 끝 직후까지, 조용한 공백은 제거 — speech_adjustments에 기록). "
+                       "보정 후 총 길이가 허용 오차를 벗어나면 구간을 빼거나 더해 다시 호출한다.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,6 +202,52 @@ class ToolBox:
         text = " ".join(s["text"] for s in self._transcript() if s["start"] < end and s["end"] > start)
         return text[:limit] + ("…" if len(text) > limit else "")
 
+    def _speech_spans(self) -> list[tuple[float, float]]:
+        """문장마다 실제 말소리 구간 (단어 타임스탬프가 있으면 첫 단어 시작 ~ 마지막 단어 끝)."""
+        return [(s["words"][0]["start"], s["words"][-1]["end"]) if s["words"] else (s["start"], s["end"])
+                for s in self._transcript()]
+
+    def _quiet(self, start: float, end: float) -> bool:
+        """말도 없고 하이라이트 신호(음량 급증, 반응, 화면 변화)도 없는 구간인지."""
+        signal_types = set(self.cfg["scoring"]["weights"])
+        return not any(ev["type"] in signal_types and ev["start"] < end and ev["end"] > start
+                       for ev in self._all_events())
+
+    def _snap_to_speech(self, start: float, end: float) -> tuple[float, float, list[str]]:
+        """클립 경계를 말소리에 맞춘다: 말 시작 pre_roll초 전부터, 말 끝 post_roll초 후까지.
+
+        말이 잘리면 늘리고, 말 앞뒤의 조용한 공백이 여유 시간보다 길면 줄인다.
+        신호가 있는 공백(게임 효과음, 화면 변화)은 하이라이트일 수 있으므로 줄이지 않는다.
+        """
+        pre, post = self.cfg["edit"]["speech_pre_roll"], self.cfg["edit"]["speech_post_roll"]
+        duration = self.meta["duration"]
+        spans = self._speech_spans()
+        inside = [(on, off) for on, off in spans if off > start and on < end]
+        if not inside:
+            return start, end, []
+        first_on = min(on for on, _ in inside)
+        last_off = max(off for _, off in inside)
+        notes = []
+
+        new_start = start
+        if first_on - pre < start:  # 말이 잘렸거나 앞 여유가 부족 → 앞으로 늘림 (이전 문장 끝은 넘지 않음)
+            prev_off = max((off for _, off in spans if off <= first_on), default=0.0)
+            new_start = max(0.0, prev_off, first_on - pre)
+        elif self._quiet(start, first_on - pre):  # 말 앞 공백이 길고 조용함 → 줄임
+            new_start = first_on - pre
+        if abs(new_start - start) >= 0.05:
+            notes.append(f"시작 {start:.2f}→{new_start:.2f}초 (말 시작 {first_on:.2f}초)")
+
+        new_end = end
+        if last_off + post > end:  # 말이 잘렸거나 뒤 여유가 부족 → 뒤로 늘림 (다음 문장 시작은 넘지 않음)
+            next_on = min((on for on, _ in spans if on >= last_off), default=duration)
+            new_end = min(duration, next_on, last_off + post)
+        elif self._quiet(last_off + post, end):  # 말 뒤 공백이 길고 조용함 → 줄임
+            new_end = last_off + post
+        if abs(new_end - end) >= 0.05:
+            notes.append(f"끝 {end:.2f}→{new_end:.2f}초 (말 끝 {last_off:.2f}초)")
+        return new_start, new_end, notes
+
     def _check_range(self, start: float, end: float) -> None:
         if not (0 <= start < end <= self.meta["duration"] + 0.001):
             raise ToolError(f"잘못된 구간 {start}~{end}초 (영상 길이 {self.meta['duration']}초, start < end 필요)")
@@ -299,17 +346,30 @@ class ToolBox:
         if not clips:
             raise ToolError("clips가 비어 있습니다.")
         warnings = []
+        adjustments = []
         out_clips = []
         for i, c in enumerate(clips, start=1):
             self._check_range(c["start"], c["end"])
+            start, end = c["start"], c["end"]
+            if self.cfg["edit"]["snap_to_speech"]:
+                start, end, notes = self._snap_to_speech(start, end)
+                if notes:
+                    adjustments.append(f"클립 {i}: " + ", ".join(notes))
             out_clips.append({
-                "order": i, "start": _r(c["start"]), "end": _r(c["end"]),
+                "order": i, "start": _r(start), "end": _r(end),
                 "candidate_id": c.get("candidate_id"),
                 "reason": c["reason"],
                 "marker": {"name": c["marker_name"], "note": c.get("marker_note", ""),
                            "color": c.get("marker_color") or self.cfg["export"]["default_marker_color"]},
             })
         ordered = sorted(out_clips, key=lambda c: c["start"])
+        # 보정 때문에 새로 겹친 이웃 클립은 사이 공백을 반으로 나눠 경계를 맞춘다
+        originals = {i: (c["start"], c["end"]) for i, c in enumerate(clips, start=1)}
+        for a, b in zip(ordered, ordered[1:]):
+            if b["start"] < a["end"] and originals[b["order"]][0] >= originals[a["order"]][1]:
+                mid = _r((a["end"] + b["start"]) / 2)
+                a["end"], b["start"] = mid, mid
+                adjustments.append(f"클립 {a['order']}·{b['order']}: 여유 시간이 겹쳐 {mid:.2f}초에서 나눔")
         for a, b in zip(ordered, ordered[1:]):
             if b["start"] < a["end"]:
                 warnings.append(f"구간이 겹침: {a['start']}~{a['end']} 과 {b['start']}~{b['end']} (겹친 부분이 두 번 나옴)")
@@ -329,6 +389,7 @@ class ToolBox:
             "allowed_difference": _r(target_duration * tol), "within_tolerance": ok,
             "advice": None if ok else ("목표보다 깁니다. 점수가 낮거나 덜 중요한 구간을 빼거나 줄이세요." if diff > 0
                                        else "목표보다 짧습니다. 후보를 더 넣거나 구간을 늘리세요. 후보가 부족하면 rerun_detection."),
+            "speech_adjustments": adjustments,
             "warnings": warnings,
         }
 

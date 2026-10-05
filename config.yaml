@@ -69,6 +69,12 @@ agent:
   max_questions: 3             # 한 번에 묻는 최대 질문 수
   duration_tolerance: 0.05     # 목표 길이 허용 오차 비율 (±5%)
 
+edit:
+  # build_edit가 클립 경계를 말소리에 맞춰 자동 보정한다
+  snap_to_speech: true
+  speech_pre_roll: 1.0         # 말 시작 전에 남길 시간(초)
+  speech_post_roll: 0.5        # 말 끝난 뒤에 남길 시간(초)
+
 export:
   default_fps: 30.0            # meta.json에 fps가 없을 때만 사용
   default_marker_color: Blue
