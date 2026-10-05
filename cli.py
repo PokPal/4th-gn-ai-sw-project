@@ -51,13 +51,15 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     from vibecut.detectors import DETECTORS
     from vibecut.media.ingest import ingest
     from vibecut.scoring.score import score
+    from vibecut.storage.cache import analysis_lock, compute_video_id
     from vibecut.stt.run import transcribe
 
-    video_id = ingest(Path(args.video))["video_id"]
-    transcribe(video_id)
-    for detect in DETECTORS.values():
-        detect(video_id)
-    score(video_id)
+    with analysis_lock(compute_video_id(Path(args.video))):
+        video_id = ingest(Path(args.video))["video_id"]
+        transcribe(video_id)
+        for detect in DETECTORS.values():
+            detect(video_id)
+        score(video_id)
     print(f"\n분석 완료. 편집 시작: python cli.py edit {video_id}")
 
 

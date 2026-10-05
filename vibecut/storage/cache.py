@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from vibecut.config import load_config, project_path
 
@@ -22,6 +25,32 @@ def compute_video_id(video_path: Path) -> str:
 
 def cache_dir(video_id: str) -> Path:
     return project_path(load_config()["paths"]["cache_dir"]) / video_id
+
+
+LOCK_FILE = ".analyze.lock"
+LOCK_STALE_SECONDS = 3 * 3600  # 이보다 오래된 잠금은 비정상 종료로 보고 무시
+
+
+class AlreadyRunning(RuntimeError):
+    pass
+
+
+@contextmanager
+def analysis_lock(video_id: str) -> Iterator[None]:
+    """같은 영상을 동시에 분석하지 못하게 한다 (음성 인식 API 중복 호출 방지). CLI와 UI 프로세스 간에도 동작."""
+    path = cache_dir(video_id) / LOCK_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and time.time() - path.stat().st_mtime > LOCK_STALE_SECONDS:
+        path.unlink(missing_ok=True)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise AlreadyRunning(f"이 영상({video_id})은 이미 다른 곳에서 분석 중입니다. 끝난 뒤 다시 시도하세요.") from None
+    os.close(fd)
+    try:
+        yield
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:

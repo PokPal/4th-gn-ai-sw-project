@@ -17,7 +17,7 @@ from vibecut.detectors import DETECTORS
 from vibecut.media.ingest import META_FILE, ingest
 from vibecut.media.preview import make_preview
 from vibecut.scoring.score import score
-from vibecut.storage.cache import cache_dir, read_json
+from vibecut.storage.cache import AlreadyRunning, analysis_lock, cache_dir, compute_video_id, read_json
 from vibecut.storage.edits import latest_edit
 from vibecut.stt.run import transcribe
 
@@ -61,6 +61,14 @@ def analyze(video: str | None, state: dict[str, Any]) -> Iterator[tuple[str, dic
         lines.append(msg)
         return "\n".join(lines)
 
+    try:
+        with analysis_lock(compute_video_id(PROJECT_ROOT / video)):
+            yield from _analyze_steps(video, state, step)
+    except AlreadyRunning as e:
+        yield step(f"⚠ {e}"), state
+
+
+def _analyze_steps(video: str, state: dict[str, Any], step) -> Iterator[tuple[str, dict[str, Any]]]:
     yield step(f"영상 등록 중: {video}"), state
     meta = ingest(PROJECT_ROOT / video)
     vid = meta["video_id"]
