@@ -16,6 +16,14 @@ def cmd_ingest(args: argparse.Namespace) -> None:
     ingest(Path(args.video))
 
 
+def cmd_transcribe(args: argparse.Namespace) -> None:
+    from vibecut.stt.run import transcribe
+
+    t = transcribe(args.video_id, force=args.force)
+    for seg in t["segments"][: args.show]:
+        print(f"  [{seg['start']:8.3f} ~ {seg['end']:8.3f}] {seg['text']}  (단어 {len(seg['words'])}개)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py", description="바이브컷 단계별 실행")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -23,6 +31,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ingest", help="영상 등록: video_id, meta.json, 음성 추출, 분석용 사본")
     p.add_argument("video", help="원본 영상 경로")
     p.set_defaults(func=cmd_ingest)
+
+    p = sub.add_parser("transcribe", help="음성 인식 → transcript.json (영상당 1회, 캐시)")
+    p.add_argument("video_id")
+    p.add_argument("--force", action="store_true", help="캐시를 무시하고 다시 인식")
+    p.add_argument("--show", type=int, default=10, help="출력할 문장 수")
+    p.set_defaults(func=cmd_transcribe)
 
     return parser
 

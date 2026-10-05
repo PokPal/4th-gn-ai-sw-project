@@ -18,6 +18,7 @@ stt:
   model: whisper-1
   language: ko
   chunk_seconds: 600           # 25MB 제한 때문에 음성을 나눠 보낼 길이(초)
+  drop_no_speech_prob: 0.8     # 말소리가 없을 확률이 이보다 높은 문장은 버림 (배경음 환각 방지)
 
 detectors:
   silence:
