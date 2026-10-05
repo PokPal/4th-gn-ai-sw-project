@@ -38,6 +38,14 @@ def cmd_detect(args: argparse.Namespace) -> None:
                   f"{ev['score']:.2f}  {ev['reason']}")
 
 
+def cmd_score(args: argparse.Namespace) -> None:
+    from vibecut.scoring.score import score
+
+    doc = score(args.video_id)
+    for ev in sorted(doc["events"], key=lambda e: -e["score"])[: args.show]:
+        print(f"    [{ev['start']:8.3f} ~ {ev['end']:8.3f}] {ev['id']}  {ev['score']:.2f}  {ev['reason']}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py", description="바이브컷 단계별 실행")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -59,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="config.yaml 값을 이번 실행에만 바꿈 (예: --set threshold_db=6)")
     p.add_argument("--show", type=int, default=10, help="탐지기별 출력할 이벤트 수")
     p.set_defaults(func=cmd_detect)
+
+    p = sub.add_parser("score", help="하이라이트 점수화 → candidates.json")
+    p.add_argument("video_id")
+    p.add_argument("--show", type=int, default=10, help="점수 높은 순으로 출력할 후보 수")
+    p.set_defaults(func=cmd_score)
 
     return parser
 
