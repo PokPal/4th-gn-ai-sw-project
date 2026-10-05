@@ -28,7 +28,8 @@ def loudness_series(video_id: str, window_seconds: float) -> tuple[np.ndarray, n
 
 def detect(video_id: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     p = {**load_config()["detectors"][NAME], **(params or {})}
-    print(f"[{NAME}] 주변 {p['baseline_seconds']}초 평균보다 {p['threshold_db']}dB 이상 큰 구간")
+    print(f"[{NAME}] 주변 {p['baseline_seconds']}초 평균과 평소 음량(활성 구간 {p['floor_percentile']}%) 중 "
+          f"큰 값보다 {p['threshold_db']}dB 이상 큰 구간")
     step = p["window_seconds"]
     db, times = loudness_series(video_id, step)
     if len(db) == 0:
@@ -36,6 +37,11 @@ def detect(video_id: str, params: dict[str, Any] | None = None) -> dict[str, Any
 
     baseline_len = max(1, int(p["baseline_seconds"] / step))
     baseline = median_filter(db, size=baseline_len, mode="nearest")
+    # 무음이 많은 영상은 주변 평균이 무음 수준으로 내려가 말 한마디도 급증이 된다.
+    # 소리가 나는 구간의 평소 음량(말하는 보통 크기)보다 낮아지지 않게 바닥을 둔다.
+    active = db[db > p["active_db"]]
+    if len(active):
+        baseline = np.maximum(baseline, np.percentile(active, p["floor_percentile"]))
     diff = db - baseline
     runs = mask_to_intervals(diff >= p["threshold_db"], times, step,
                              merge_gap=p["merge_gap"], min_duration=p["min_duration"])
@@ -47,7 +53,7 @@ def detect(video_id: str, params: dict[str, Any] | None = None) -> dict[str, Any
         events.append(make_event(
             NAME, len(events) + 1, start, end, "loudness_spike",
             score=diff[peak] / (2 * p["threshold_db"]),
-            reason=f"주변 평균보다 최대 {diff[peak]:.1f}dB 큰 소리가 {end - start:.1f}초 지속",
+            reason=f"평소 음량보다 최대 {diff[peak]:.1f}dB 큰 소리가 {end - start:.1f}초 지속",
             data={"peak_db": round(float(db[peak]), 1),
                   "baseline_db": round(float(baseline[peak]), 1),
                   "max_diff_db": round(float(diff[peak]), 1)},

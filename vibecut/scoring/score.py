@@ -24,6 +24,26 @@ TYPE_LABELS = {
 }
 
 
+def _split_long(start: float, end: float, padded: list[tuple[float, float]],
+                max_duration: float) -> list[tuple[float, float]]:
+    """신호가 이어 붙어 max_duration보다 길어진 후보를, 신호 사이 가장 큰 틈에서 재귀적으로 나눈다."""
+    if end - start <= max_duration:
+        return [(start, end)]
+    inside = sorted((s, e) for s, e in padded if s >= start and e <= end)
+    best, cut = 0.0, None
+    reach = inside[0][1] if inside else end
+    for s, e in inside[1:]:
+        if s - reach > best or cut is None:  # 앞 신호들이 끝난 지점과 다음 신호 시작 사이의 틈
+            best, cut = s - reach, (reach, s)
+        reach = max(reach, e)
+    if cut is None:
+        return [(start, end)]
+    mid = (cut[0] + cut[1]) / 2 if cut[1] > cut[0] else cut[1]
+    if mid <= start or mid >= end:
+        return [(start, end)]
+    return _split_long(start, mid, padded, max_duration) + _split_long(mid, end, padded, max_duration)
+
+
 def score(video_id: str) -> dict[str, Any]:
     cfg = load_config()["scoring"]
     weights: dict[str, float] = cfg["weights"]
@@ -40,7 +60,9 @@ def score(video_id: str) -> dict[str, Any]:
 
     padded = [(max(0.0, ev["start"] - cfg["padding_before"]),
                min(duration, ev["end"] + cfg["padding_after"])) for ev in signals]
-    groups = merge_intervals(padded, gap=cfg["merge_gap"])
+    groups = []
+    for g in merge_intervals(padded, gap=cfg["merge_gap"]):
+        groups += _split_long(g[0], g[1], padded, cfg["max_duration"])
 
     events = []
     for start, end in groups:

@@ -89,6 +89,12 @@ def cmd_export(args: argparse.Namespace) -> None:
     export_edit(args.video_id, path)
 
 
+def cmd_ui(args: argparse.Namespace) -> None:
+    from vibecut.ui.app import launch
+
+    launch(port=args.port)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py", description="바이브컷 단계별 실행")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -129,6 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("video_id")
     p.add_argument("--edit-id", help="edits/<edit_id>.json (생략하면 최신)")
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("ui", help="화면 실행 (브라우저에서 http://127.0.0.1:7860)")
+    p.add_argument("--port", type=int, default=7860)
+    p.set_defaults(func=cmd_ui)
 
     return parser
 

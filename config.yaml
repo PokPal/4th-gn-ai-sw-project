@@ -27,7 +27,9 @@ detectors:
   loudness:
     window_seconds: 0.5        # 음량 계산 창 크기
     baseline_seconds: 30.0     # 평균 음량 비교 구간 길이
-    threshold_db: 8.0          # 평균보다 이만큼 크면 급증
+    threshold_db: 8.0          # 기준 음량보다 이만큼 크면 급증
+    active_db: -40.0           # 이보다 큰 창만 "소리가 나는 구간"으로 봄
+    floor_percentile: 50       # 기준 음량의 바닥 = 소리가 나는 구간 음량의 이 백분위 (평소 말하는 크기)
     min_duration: 0.5
     merge_gap: 1.0             # 이 간격보다 가까운 급증은 하나로 합침
   reaction:
@@ -46,7 +48,10 @@ detectors:
   dead_time:
     min_duration: 15.0         # 이 길이 이상 조용하고 화면 변화가 적으면 지루한 구간
     max_motion: 0.03           # 이 값보다 화면 변화가 작으면 정적인 화면
-    quiet_margin_db: 0.0       # 전체 음량 중앙값 + 이 값 이하이면 조용한 것으로 봄
+    active_db: -40.0           # 이보다 큰 창만 "소리가 나는 구간"으로 봄
+    quiet_percentile: 50       # 소리가 나는 구간 음량의 이 백분위 이하이면 조용한 것으로 봄
+    smooth_seconds: 5.0        # 순간 변화에 끊기지 않게 이 길이로 중앙값을 냄
+    merge_gap: 3.0             # 이 간격 이하로 끊긴 지루한 구간은 하나로 합침
 
 scoring:
   weights:                     # 하이라이트 점수 가중치
@@ -59,6 +64,7 @@ scoring:
   padding_before: 3.0          # 후보 앞에 붙일 여유 시간
   padding_after: 2.0           # 후보 뒤에 붙일 여유 시간
   min_score: 0.2               # 이 점수 미만은 후보에서 제외
+  max_duration: 45.0           # 후보 최대 길이(초). 신호가 이어 붙어 더 길어지면 가장 큰 틈에서 나눔
 
 agent:
   model: claude-opus-5-5       # 비용을 줄이려면 claude-sonnet-5-5
